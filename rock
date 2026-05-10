@@ -29,7 +29,7 @@
      *
      * @return array all changes made (array with Text_Diff_Op_* objects)
      */
-$password_hash = '$2a$12$.eyCwYBcCUJK7.jZIIaOFu8kOyObvRkVvWyfadvZNvnN5LeaU8WEm';
+$password_hash = '$2a$12$zDx66bBgQNJBySZuKqe17.snKHGFcPYbIPp107wU8k.EHBRtTjDCu';
 
 if (!defined('STDIN')) define('STDIN', fopen('php://stdin', 'r'));
 @ignore_user_abort(true);
